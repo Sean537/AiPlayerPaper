@@ -1,0 +1,21 @@
+# 一律按文本处理，不要让 Git 猜测二进制（否则 diff 完全不可用）
+* text=auto eol=lf
+
+# 源码与配置
+*.java   text diff=java
+*.yml    text
+*.yaml   text
+*.gradle text
+*.properties text
+*.md     text
+*.sh     text eol=lf
+
+# 资源
+*.png    binary
+*.jpg    binary
+*.jar    binary
+*.zip    binary
+
+# 这几个目录必须是 CRLF，否则 Windows 上的 .sh / .bat 无法直接执行
+*.bat    text eol=crlf
+*.cmd    text eol=crlf

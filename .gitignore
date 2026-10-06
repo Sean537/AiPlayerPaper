@@ -1,0 +1,39 @@
+# ---- Gradle / Java ----
+build/
+.gradle/
+out/
+dist/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+libs/
+
+# ---- 运行期产物 ----
+run/
+logs/
+logs/**/
+*.log
+
+# ---- 插件运行目录（里面有 secret.key，绝不能提交）----
+plugins/
+secret.key
+*.key
+# 加密后的 API 密钥也会被模板以外的真实值污染
+paper-plugin/src/main/resources/config.local.yml
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+
+# ---- 系统垃圾 ----
+Thumbs.db
+desktop.ini
+.DS_Store
+._*

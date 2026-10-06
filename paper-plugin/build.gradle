@@ -1,0 +1,104 @@
+plugins {
+    id 'java'
+}
+
+group = 'cn.blockforge.aiplayer'
+
+// 版本号只有一个来源：resources/plugin.yml。jar 名、插件列表、控制台输出一律跟着它走，
+// 不会再出现"plugin.yml 写 1.3.0、打出来的 jar 却叫 1.0.0"这种对不上的情况。
+version = file('src/main/resources/plugin.yml').withReader('UTF-8') { String yml ->
+    def m = yml =~ /^version:\s*['"]?([^'"\s]+)['"]?\s*$/
+    if (!m.find()) throw new GradleException('src/main/resources/plugin.yml 里找不到 version: 字段')
+    m.group(1)
+}
+
+java {
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+    // 编译期需要 Paper API，运行期由服务端提供，所以是 compileOnly 而不是 implementation。
+    compileOnly "io.papermc.paper:paper-api:${providers.gradleProperty('paper_api_version').get()}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // 目标定死 Java 21，但不钉死"必须用 JDK 21 来编"：
+    // --release 21 同时约束了字节码版本（class major 65）和可用的 Java API，
+    // 所以拿 JDK 25 甚至更高来编，产出的仍然是标准的 Java 21 字节码，
+    // 不会误用新 API。已经实测：JDK 25 + --release 21 → major 65。
+    // 之前这里写的是 toolchain.languageVersion = 21，那会让只装了 JDK 25 的机器直接构建失败
+    // （还得额外装一个 JDK 21，或引入 toolchain 自动下载插件）。
+    options.release = 21
+
+    // 必须显式指定：源码、config.yml、manual.md 全是中文，不锁死 UTF-8 的话，
+    // 在非 UTF-8 平台（Windows GBK、locale=C 的容器）上会编出一堆替换字符，
+    // 而 javac 照样报 BUILD SUCCESSFUL —— 上了服务器才发现聊天内容全是乱码。
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// 资源（config.yml / 使用说明书 / 蓝图）也按 UTF-8 原样搬运。
+// 刻意不做 expand/filter 替换：manual.md 有近 3 万字中文，任何 $ 或 \ 插值都可能把它弄坏，
+// 而它并不需要注入版本号。
+tasks.named('processResources') {
+    filteringCharset = 'UTF-8'
+}
+
+// jar 名跟着 plugin.yml 的 version 走，不再是 build.gradle 里写死的字符串
+base {
+    archivesName = 'AiPlayerPaper'
+}
+
+tasks.named('jar') {
+    manifest {
+        attributes(
+            'Implementation-Title': 'AiPlayerPaper',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+// 让 `gradle build` 在没有 Paper 依赖缓存、也没网络时也能给出可读的错误，而不是一堆 404
+tasks.register('printVersion') {
+    doLast { println "AiPlayerPaper ${project.version}" }
+}
+
+// 使用说明书在仓库里存了两份：paper-plugin/使用说明书.md（给人看）和
+// src/main/resources/manual.md（被打进 jar）。两份完全相同，但一旦只改其中一份就会
+// 静默漂移 —— 玩家在服务器里读到的说明书和 GitHub 上的对不上，而且没有任何报错。
+// 与其删掉一份（那是别人的工作产物），不如让构建强制校验它们一致。
+tasks.register('verifyManualInSync') {
+    group = 'verification'
+    description = '校验两份使用说明书内容一致'
+    def repoCopy = file('使用说明书.md')
+    def packaged = file('src/main/resources/manual.md')
+    inputs.files(repoCopy, packaged)
+    outputs.file(layout.buildDirectory.file('manual-sync-check.txt'))
+    doLast {
+        if (!repoCopy.exists()) {
+            throw new GradleException("缺少 ${repoCopy}（与 jar 内的 manual.md 应保持一致）")
+        }
+        // 逐字节比：说明书里有大量中文，"看起来一样"在这里不成立
+        if (!repoCopy.bytes.equals(packaged.bytes)) {
+            throw new GradleException(
+                "两份使用说明书不一致：\n" +
+                "  ${repoCopy}\n  ${packaged}\n" +
+                "只改了其中一份？把改动同步到另一份后重试。")
+        }
+        def out = layout.buildDirectory.file('manual-sync-check.txt').get().asFile
+        out.parentFile.mkdirs()
+        out.text = "两份使用说明书一致（${packaged.bytes.length()} 字节）\n"
+    }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyManualInSync'
+}

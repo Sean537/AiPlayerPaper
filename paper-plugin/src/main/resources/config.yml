@@ -1,0 +1,210 @@
+# AI 玩家人格（会写进系统提示，也会用于聊天提及判断）
+persona:
+  nickname: 小助手
+  tone: 友善、简洁、会说明理由
+  traits: 耐心,守序,中文优先
+  # 同一个玩家连发多条群聊时，两次"接话"之间的最小间隔（秒）。
+  # 注意：这只管普通群聊接话；玩家点名 @它 或 /msg 私聊永远 100% 必回、排队也回。
+  cooldown-seconds: 3
+  # 公共聊天回复概率：100=逢聊必答；0=只回 @ 它名字的话（私聊永远必答，不受此影响）
+  public-reply-chance: 100
+  # true=AI 用真实玩家聊天频道发言（走服务器聊天管线，前缀/格式插件生效）
+  chat-as-player: true
+  # 送达方式（解决"后台有回复、游戏聊天框看不到"）：
+  #   auto      = 先以玩家身份发言，插件自动确认到底有没有送出去；没送出去（被聊天/登录插件吞掉、
+  #               AI 没过认证插件验证等）就立刻改用硬送达，保证聊天框一定看得到。推荐。
+  #   asplayer  = 只用玩家聊天频道、绝不兜底（聊天框最干净，但一旦被拦就一个字都看不到）
+  #   broadcast = 固定用硬送达（不走玩家频道，无延迟）
+  #   safe      = 永不走玩家频道，直接逐人硬送达。聊天/登录插件拦不到它，最稳。
+  delivery-mode: auto
+  # 硬送达的样式：
+  #   bracket   = §b[「昵称」] 内容（默认）
+  #   vanilla   = 仿原版「AiPlayer: 内容」
+  #   actionbar = 只走屏幕中央的动作栏（聊天栏被插件吞掉时的首选）
+  #   title     = 动作栏 + 标题，双保险
+  #   multi     = 聊天栏 + 动作栏 + 标题，全都来一遍
+  #   none      = 公共频道不发，只把回复单发给点名的那个人
+  fallback-style: bracket
+  # 硬送达时是否附带一条动作栏。动作栏是独立封包，聊天插件几乎拦不到它，
+  # 而且显示在屏幕正中，不会像聊天栏那样被刷过去看不见 —— 这是"广播也看不到"的根治点，默认开。
+  # （fallback-style 为 actionbar/title/multi 时该开关无效，样式本身就带动作栏。）
+  hard-send-actionbar: true
+  # 硬送达时是否再附带一条居中标题（会短暂遮挡视野，默认关）
+  hard-send-title: false
+  # fallback-style=none 时，被 @ 的回复仍然单独私聊发给提问的那个人（true=不会丢答案）
+  mention-direct-fallback: true
+  # 判断"以玩家身份发言"是否真送达的等待时长（tick，20=1 秒）
+  verify-delay-ticks: 16
+  # 判定这条路不通之后，多少秒内不再白等（期间直接走硬送达，到点自动复测）
+  asplayer-retry-cooldown-seconds: 120
+  # 回复私聊的方式：direct=直接回给那个人；msg=用服务器的 /msg 命令回（更像真人，需服务器有 msg 命令）
+  whisper-reply-mode: direct
+  # 有人跟它说话时，停止闲逛并转头看着对方的时长（秒）
+  listen-pause-seconds: 20
+  banned-words: []
+
+# AI 的"耳朵"。协议自连模式下 /msg 私聊只进 AI 客户端的聊天窗口，不产生 Bukkit 事件，
+# 由下面的正则把这些收到的文本认出来。每条正则必须含命名组 <player> 和 <text>，
+# 命中即视为"有人对 AI 说悄悄话"，一定会回复。你们服务器 msg 格式特殊就照抄一条改改。
+chat:
+  listen-client-messages: true
+  # 连普通聊天包（NBT 编码）也提取文字识别私聊格式；服务器话很多时可关
+  sniff-signed-chat: true
+  whisper-patterns:
+    - '(?<player>\S{1,16})\s*(?:悄悄对你说|低声对你说|对你说|私聊对你说|私聊给你|私聊|悄悄话)[：:]\s*(?<text>.+)'
+    - '(?<player>\S{1,16})\s+whispers?\s+to\s+you[：:]?\s*(?<text>.+)'
+    - 'from\s+(?<player>\S{1,16})\s+to\s+you[：:]?\s*(?<text>.+)'
+    - '(?<player>\S{1,16})\s*(?:→|➤)\s*(?:你|You|you)\s*[：:]?\s*(?<text>.+)'
+    - '(?:你|You|you)\s*(?:←|⇐)\s*(?<player>\S{1,16})\b[：:]?\s*(?<text>.+)'
+
+# AI 形象。默认"协议自连"进服：插件在 127.0.0.1 向服务器自己的端口发起 TCP 连接，
+# 按 Java 版 1.21.x 的网络协议走完整登录流程——服务器眼中这就是个真实玩家
+# （进 tab 列表、其它插件按玩家对待、支持进服自动执行命令），不依赖服务端内部类，
+# 不会因为版本签名变化报"无法创建真玩家级AI"。
+# join-method: auto=自连→内核反射→盔甲架逐级回退；self-client=只用协议自连；
+#              kernel=旧版反射方式；armorstand=盔甲架（无玩家身份）。
+# skin 可以写 player:玩家名（自动取正版皮肤，协议模式下进服即上身）、
+# url:https://textures.minecraft.net/...、base64:纹理值；留空=默认外观。
+npc:
+  type: player
+  join-method: auto
+  name: AiPlayer
+  skin: ''
+  slim: false
+  world: world
+  x: 0.5
+  y: 65.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+  uuid: ''
+  gamemode: survival
+  auto-join: true
+  wander: true
+  wander-radius: 8
+  move-speed: 0.1
+
+# 协议自连参数（npc.join-method 用到 self-client 时生效）。
+self-client:
+  # 服务器地址：默认本机回环；端口 0=自动探测服务器自己的监听端口
+  address: 127.0.0.1
+  port: 0
+  # 登录+配置阶段的总超时（秒）
+  login-timeout-seconds: 25
+  # play 状态下模拟客户端移动包的间隔（毫秒）。1.21.2+ 服务端会踢"不发包的客户端"
+  tick-interval-ms: 1000
+  # online-mode=true 时正版验证拦自连客户端；确要强行尝试再打开
+  force: false
+  # 排查用：true 时把自连客户端收到/发出的每个包 ID 与握手阶段写进控制台
+  debug-log: false
+
+# 自主大脑：没人找它的时候它也"活着"。每 tick-seconds 醒一次，看一遍
+# 地图记忆、玩家档案、全局聊天，然后让 AI 选下一步行动（探索/采矿/建家/回家/
+# 串门/插话/执行管理命令）。行动结果写进记忆，下次决策以此为据。
+# 关闭它 = 回到"只会被动聊天+随机闲逛"的老行为。
+brain:
+  enabled: true
+  # 每隔多少秒做一次决策（token 消耗主要看这里，20 秒一次很勤快了）
+  tick-seconds: 20
+  # 玩家上线时，依据他的档案主动打招呼（记得住老玩家上次干了什么）
+  greet-on-join: true
+  # 探索到新区域后，花一次 API 给这片地方写句"印象"存进地图记忆
+  describe-areas: true
+  # 单次探索最远走多少个格子（格子越大探索越粗、次数越少）
+  explore-max-cells: 10
+  cell-size: 32
+
+# 安家：进服后自动在出生点附近找一块平整干燥的平地，
+# 盖一间带门、窗、床、工作台、箱子、熔炉的小屋，把床设为它的重生点。
+# 以后每次进服/死亡都从家里醒来。手动指定：/aiplayer home set <x y z>
+home:
+  auto-build: true
+  # 最远在出生点多少格外找地
+  max-distance: 96
+
+# 自主行为参数
+behavior:
+  gather:
+    radius: 12
+    interval-ticks: 30
+    materials:
+      - OAK_LOG
+      - COAL_ORE
+      - IRON_ORE
+      - COPPER_ORE
+      - WHEAT
+      - CARROTS
+      - POTATOES
+  build:
+    blocks-per-action: 2
+  # 探索/赶路的移动速度（格/tick，0.45≈9格每秒；闲逛仍用 npc.move-speed）
+  explore:
+    move-speed: 0.45
+
+# 多 API 源。密钥填 /aiplayer source key，会自动加密。频道可分别选择源。
+api:
+  channels:
+    public: default
+    private: default
+    mention: default
+  sources:
+    default:
+      type: openai_compatible
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
+      encrypted-key: ''
+      enabled: false
+
+# 进服后自动执行命令：用于需要登录的服务器（auth 插件的 /login、/register 等），
+# 也可以用来进服后自动 /sethome、领每日奖励等。仅"真玩家"模式可用（盔甲架没有玩家身份）。
+join-commands:
+  enabled: true
+  # AI 进入世界后等待多少秒开始发送（等地表加载和认证插件的提示消息）
+  delay-seconds: 3
+  # 相邻两条命令之间的间隔（毫秒）。太短会被反作弊或 auth 插件当成刷屏
+  interval-ms: 800
+  # 日志与 /aiplayer autocmd list 里隐藏登录类命令的参数
+  hide-password: true
+  # 固定序列：每次进服按顺序逐条执行（带不带 / 都行）。
+  # ${secret:名字} 会替换成加密保存的值：/aiplayer secret set auth 你的密码
+  commands: []
+  #   - "login ${secret:auth}"
+  #   - "rg 1"
+  # 提示响应：AI 收到包含关键词的服务器消息时，立即发送对应命令。
+  # timeout-seconds >= 0：等不到提示也超时兜底发一次；-1 表示只在看到提示时才发。
+  # max-times：本次在线期间这条最多发几次，防止死循环刷屏。
+  prompts: []
+  #   - keywords: ['请输入指令登录', '请使用 /login', 'please log in']
+  #     send: "login ${secret:auth}"
+  #     timeout-seconds: 15
+  #     max-times: 3
+  #   - keywords: ['密码错误', 'wrong password', 'not logged in']
+  #     send: "login ${secret:auth2}"
+  #     timeout-seconds: -1
+  #     max-times: 2
+
+# 加密保存的敏感值（名字: enc:AES-GCM 密文）。主密钥在 plugins/AiPlayerPaper/secret.key。
+# 用 /aiplayer secret set <名字> <内容> 添加，命令里用 ${secret:名字} 引用。
+secrets: {}
+
+skills:
+  # 白名单默认已内置一批管理命令（查询在线/天气/时间/治疗/传送/踢出/封禁…）。
+  # 等级 0/1：AI 可自主执行（如查在线、变天气、治疗受伤玩家）；
+  # 等级 2：必须管理员 /aiplayer confirm 确认才执行（踢出/封禁/传送玩家/改模式）。
+  require-confirmation: true
+  # AI 大脑自主管理服务器的总开关
+  autonomous: true
+  # 允许自主执行的最高技能等级（1=温和自治，2=连踢封也自动，谨慎）
+  autonomous-max-level: 1
+memory:
+  max-turns: 12
+  # 每隔多少分钟，让 AI 把一位玩家的动态浓缩成"画像"存进档案（记名字/习惯/作品）
+  consolidate-minutes: 45
+order:
+  temporary-ban-minutes: 30
+
+# 后台提醒。没配置任何 API 密钥时，插件会定期写控制台日志并提示在线管理员。
+notify:
+  api-key-reminder: true
+  # 每隔多少分钟提醒一次（默认 10）
+  api-key-interval-minutes: 10

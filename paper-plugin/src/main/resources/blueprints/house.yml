@@ -1,0 +1,24 @@
+# 相对 AI 位置的简单小屋示例
+blocks:
+  - {x: 0, y: 0, z: 0, material: OAK_PLANKS}
+  - {x: 1, y: 0, z: 0, material: OAK_PLANKS}
+  - {x: 2, y: 0, z: 0, material: OAK_PLANKS}
+  - {x: 0, y: 0, z: 1, material: OAK_PLANKS}
+  - {x: 1, y: 0, z: 1, material: OAK_PLANKS}
+  - {x: 2, y: 0, z: 1, material: OAK_PLANKS}
+  - {x: 0, y: 0, z: 2, material: OAK_PLANKS}
+  - {x: 1, y: 0, z: 2, material: OAK_PLANKS}
+  - {x: 2, y: 0, z: 2, material: OAK_PLANKS}
+  - {x: 0, y: 1, z: 0, material: OAK_PLANKS}
+  - {x: 2, y: 1, z: 0, material: OAK_PLANKS}
+  - {x: 0, y: 1, z: 2, material: OAK_PLANKS}
+  - {x: 2, y: 1, z: 2, material: OAK_PLANKS}
+  - {x: 0, y: 2, z: 0, material: OAK_PLANKS}
+  - {x: 1, y: 2, z: 0, material: OAK_PLANKS}
+  - {x: 2, y: 2, z: 0, material: OAK_PLANKS}
+  - {x: 0, y: 2, z: 1, material: OAK_PLANKS}
+  - {x: 1, y: 2, z: 1, material: OAK_PLANKS}
+  - {x: 2, y: 2, z: 1, material: OAK_PLANKS}
+  - {x: 0, y: 2, z: 2, material: OAK_PLANKS}
+  - {x: 1, y: 2, z: 2, material: OAK_PLANKS}
+  - {x: 2, y: 2, z: 2, material: OAK_PLANKS}

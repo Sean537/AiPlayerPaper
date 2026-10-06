@@ -1,0 +1,17 @@
+name: AiPlayerPaper
+version: 1.4.0
+main: cn.blockforge.aiplayer.AiPlayerPlugin
+api-version: '1.21'
+author: AutoMods
+description: Paper AI 玩家插件：自主大脑（探索记图、玩家画像、聊天监管、白名单管理命令）、自动安家盖房放床定点出生、点名私聊 100% 必答、发言送达回执 + 硬送达（逐人发包 + 动作栏）+ 送达通道诊断。
+commands:
+  aiplayer:
+    description: AI 玩家管理命令
+    usage: /aiplayer help
+    aliases: [ai]
+    permission: aiplayer.use
+permissions:
+  aiplayer.use:
+    default: true
+  aiplayer.admin:
+    default: op

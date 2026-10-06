@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_VERSION: '8.10.2'
+
+jobs:
+  paper-plugin:
+    name: Paper 插件 (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: paper-plugin
+    strategy:
+      fail-fast: false
+      matrix:
+        # 21 是最低要求；25 用来证明 --release 21 在新 JDK 上同样产出标准 Java 21 字节码，
+        # 免得有人把 toolchain 钉死成 21 之后，只装了新 JDK 的贡献者构建不了。
+        java: ['21', '25']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      # 仓库没有提交 gradle wrapper（要生成它需要本地装 Gradle），
+      # 所以这里显式下载固定版本的 Gradle，保证构建可复现。
+      - name: 安装 Gradle
+        run: |
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      # 源码、config.yml、说明书全是中文。校验它们确实是合法 UTF-8，
+      # 否则会重复踩"javac 成功但编出来是乱码"那个坑。
+      - name: 校验源文件为合法 UTF-8
+        run: |
+          set -euo pipefail
+          bad=0
+          while IFS= read -r -d '' f; do
+            if ! iconv -f UTF-8 -t UTF-8 "$f" >/dev/null 2>&1; then
+              echo "::error file=$f::不是合法 UTF-8"
+              bad=1
+            fi
+          done < <(find src -type f \( -name '*.java' -o -name '*.yml' -o -name '*.md' \) -print0)
+          exit "$bad"
+
+      - name: 构建
+        run: gradle build --stacktrace
+
+      - name: 确认产出的是 Java 21 字节码（class major 必须等于 65）
+        if: matrix.java == '25'
+        run: |
+          set -euo pipefail
+          jar=$(ls build/libs/*.jar | head -1)
+          cls=$(unzip -l "$jar" | grep -o 'cn/blockforge/aiplayer/AiPlayerPlugin.class' | head -1)
+          unzip -p "$jar" "$cls" | od -An -tu1 -N8 | awk '{ exit ($7 * 256 + $8) == 65 ? 0 : 1 }'
+
+      - name: 上传产物
+        if: matrix.java == '21'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AiPlayerPaper
+          path: paper-plugin/build/libs/*.jar
+          if-no-files-found: error
+
+  fabric-mod:
+    name: Fabric mod 骨架
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 Gradle
+        run: |
+          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      # 根 gradle.properties 曾写死 /opt/jdks/java-8 这类 Linux 专属路径，
+      # 在 CI 和其他平台上会直接报错。已移除，这里用 setup-java 提供的 JDK。
+      - name: 构建
+        run: gradle build --stacktrace

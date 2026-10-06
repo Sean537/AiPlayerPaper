@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "paper_ai_paper_ai_paper",
+  "version": "${version}",
+  "name": "AI 玩家助手（服务端）",
+  "description": "服务端 AI 玩家：多 API 源与加密密钥、频道感知人格、分层记忆、玩家皮肤形象与状态特效、白名单技能调用、分级秩序维护与审计日志。",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "cn.blockforge.generated.paperaipaperaipaper.GeneratedMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
