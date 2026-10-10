@@ -14,7 +14,7 @@ public final class AiCommands implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) { sender.sendMessage(plugin.helpText()); return true; }
         // diagnose / report / say 要放给普通玩家：聊天框看不见的时候，正是被影响的那个玩家在报告看得见哪几条
-        Set<String> free = Set.of("help", "tell", "status", "delivery");
+        Set<String> free = Set.of("help", "tell", "status", "delivery", "order");
         boolean needsAdmin = !free.contains(args[0].toLowerCase(Locale.ROOT));
         if (needsAdmin && !sender.hasPermission("aiplayer.admin")) return fail(sender, "你需要管理员权限（aiplayer.admin）。");
         switch (args[0].toLowerCase(Locale.ROOT)) {
@@ -41,6 +41,14 @@ public final class AiCommands implements CommandExecutor, TabCompleter {
             case "secret" -> secret(sender, args);
             case "gather" -> gather(sender, args);
             case "build" -> build(sender, args);
+            case "order" -> {
+                if (args.length < 2) return fail(sender, "用法：/aiplayer order <指令>（如：look、examine 玩家名、home、visit 玩家、command <技能>）");
+                if (!plugin.brain().enabled()) { fail(sender, "AI 大脑未开启（/aiplayer brain on）。"); return; }
+                if (!plugin.npcs().online()) { fail(sender, "AI 玩家不在线（先 /aiplayer npc spawn）。"); return; }
+                plugin.brain().order(join(args, 1), sender.getName());
+                sender.sendMessage("§a已下达指令给 AI（" + plugin.npcs().name() + "）：" + join(args, 1)
+                    + "，它会在空闲时执行。进度看 /aiplayer status。");
+            }
             default -> fail(sender, "未知子命令。用 /aiplayer help 查看帮助。");
         }
         return true;
@@ -443,7 +451,7 @@ public final class AiCommands implements CommandExecutor, TabCompleter {
     }
 
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return filter(List.of("help", "status", "reload", "tell", "say", "confirm", "deny", "source", "channel", "persona", "memory", "skill", "punish", "npc", "brain", "home", "autocmd", "secret", "gather", "build"), args[0]);
+        if (args.length == 1) return filter(List.of("help", "status", "reload", "tell", "say", "confirm", "deny", "source", "channel", "persona", "memory", "skill", "punish", "npc", "brain", "home", "autocmd", "secret", "gather", "build", "order"), args[0]);
         if (args.length == 2) return switch (args[0].toLowerCase(Locale.ROOT)) {
             case "source" -> filter(List.of("list", "add", "key", "enable", "disable", "remove", "test"), args[1]);
             case "channel" -> filter(List.of("public", "private", "mention"), args[1]);

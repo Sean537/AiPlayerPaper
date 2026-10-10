@@ -286,6 +286,8 @@ public final class AiPlayerPlugin extends JavaPlugin implements Listener {
         if (!getConfig().contains("brain.describe-areas")) { getConfig().set("brain.describe-areas", true); changed = true; }
         if (!getConfig().contains("brain.explore-max-cells")) { getConfig().set("brain.explore-max-cells", 10); changed = true; }
         if (!getConfig().contains("brain.cell-size")) { getConfig().set("brain.cell-size", 32); changed = true; }
+        // 图像识别：examine 玩家时抓皮肤图去视觉 LLM；关掉=直接用文本描述
+        if (!getConfig().contains("brain.examine-vision")) { getConfig().set("brain.examine-vision", true); changed = true; }
         if (!getConfig().contains("home.auto-build")) { getConfig().set("home.auto-build", true); changed = true; }
         if (!getConfig().contains("home.max-distance")) { getConfig().set("home.max-distance", 96); changed = true; }
         if (!getConfig().contains("skills.autonomous")) { getConfig().set("skills.autonomous", true); changed = true; }
@@ -367,6 +369,8 @@ public final class AiPlayerPlugin extends JavaPlugin implements Listener {
             "用玩家使用的语言，用一两句话接住话题，别沉默、别说自己是语言模型。" +
             "【频道】" + ask.channel() + "（private=玩家对你说的悄悄话，只回给这个人；mention=玩家在群里点了你的名字；public=普通群聊）" +
             "【技能规则】如需执行服务器命令，只输出一行 SKILL: <技能名> [参数=值]，且只能使用白名单技能。" +
+            "【指令】你可以直接 obey 玩家指令：输出 ACTION: look | ACTION: examine <玩家名> | ACTION: command <技能>，"
+            + " 系统会执行你的 ACTION（不当作聊天发给玩家）。" +
             "\n【我对这个玩家的记忆】\n" + memory.brief(who, senderName) +
             "\n【对话上下文】\n" + memory.context(who) +
             "\n【世界记忆】\n" + clip(worldMemory.brief(npcs.location()), 600) +
@@ -418,6 +422,12 @@ public final class AiPlayerPlugin extends JavaPlugin implements Listener {
         if (answer.isEmpty()) return;
         UUID who = sender instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
         if (answer.regionMatches(true, 0, "SKILL:", 0, 6)) { handleSkill(sender, answer.substring(6).trim()); return; }
+        if (answer.regionMatches(true, 0, "ACTION:", 0, 7)) {
+            String action = answer.substring(7).trim();
+            brain.executeAction(action);
+            if (sender != null) sender.sendMessage("§7[AI] 收到指令，正在执行：" + action);
+            return;
+        }
         memory.add(who, npcs.name(), answer);
         memory.mark(who);
         getLogger().info("[AI对话] → " + senderName + "（" + ms + " ms）：" + (answer.length() > 60 ? answer.substring(0, 60) + "…" : answer));
@@ -609,6 +619,7 @@ public final class AiPlayerPlugin extends JavaPlugin implements Listener {
             "§7/aiplayer delivery diagnose [玩家] · delivery report <编号>（聊天框看不到时先跑这个：逐条通道打探针）\n" +
             "§7/aiplayer delivery retry（清掉冷静期，立刻重新尝试以玩家身份发言）\n" +
             "§7/aiplayer brain on|off|now|status（自主大脑：探索/记图/记人/监管聊天）\n" +
+            "§7/aiplayer order <指令>（直接吩咐 AI 做事，如 look/examine <玩家>/home/visit/gather/command <技能>）\n" +
             "§7/aiplayer home show|rebuild|goto|set <x y z>（安家：自己盖房放床，从这里出生）\n" +
             "§7/aiplayer source add|key|enable|disable|remove|list|test（管理员；test=API 连通自检）\n" +
             "§7/aiplayer channel <public|private|mention> <源id>\n" +

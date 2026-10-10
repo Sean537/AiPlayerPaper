@@ -8,7 +8,9 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 
@@ -29,6 +31,11 @@ public final class AgentBrain {
     private String lastActionResult = "（还没开始）";
     private final List<String> recentActions = new ArrayList<>();
     private long tripsThisSession;
+    /** 玩家下达的直接指令队列。发给大脑的指令在下一次空闲时被处理，优先于自主决策。 */
+    private final Deque<Order> orders = new ArrayDeque<>();
+
+    /** 玩家下达的直接指令。issuer=null 表示系统/自主。 */
+    private record Order(String text, String issuer) {}
 
     public AgentBrain(AiPlayerPlugin plugin) { this.plugin = plugin; }
 
@@ -52,7 +59,8 @@ public final class AgentBrain {
 
     public String statusLine() {
         return "大脑：" + (enabled() ? "开" : "关") + "，上一步结果：" + lastActionResult
-            + "，本次出行 " + tripsThisSession + " 次，全局消息已读 " + feedSeen + " 条";
+            + "，本次出行 " + tripsThisSession + " 次，全局消息已读 " + feedSeen + " 条"
+            + "，待处理指令 " + orders.size() + " 条";
     }
 
     /** 立刻做一次决策（/aiplayer brain now 用）。force=true 时跳过"正在走路"等限制。 */
@@ -71,6 +79,12 @@ public final class AgentBrain {
             if (plugin.chatBusy()) return;               // 有人正在等回复：把嘴和脑子先让给对话
             if (plugin.behavior().isBusy()) return;      // 正在走路/干活
             if (!plugin.behavior().isIdle()) return;     // 有人刚跟它说话，在"听"的窗口里
+            Order ord = orders.peekFirst();
+            if (ord != null) {
+                orders.pollFirst();
+                think(true, ord.text(), ord.issuer());
+                return;
+            }
             tick0();
         } catch (Exception e) {
             lastActionResult = "决策异常：" + e.getClass().getSimpleName() + " " + e.getMessage();
@@ -82,10 +96,30 @@ public final class AgentBrain {
     private void tick0() { think(false); }
 
     private void think(boolean force) {
+        think(force, null, null);
+    }
+
+    /** 玩家下达一条直接指令（来自 /aiplayer order，或聊天 ACTION: 回复）。 */
+    public void order(String directive, String issuerName) {
+        if (directive == null || directive.isBlank()) return;
+        String issuer = issuerName == null || issuerName.isBlank() ? "某玩家" : issuerName;
+        if (orders.size() >= 8) {
+            plugin.getLogger().warning("[大脑] 指令队列已满（8），丢弃一条：" + directive);
+            return;
+        }
+        orders.addLast(new Order(directive.trim(), issuer));
+        plugin.getLogger().info("[大脑] 收到指令（" + issuer + "）：" + directive);
+    }
+
+    /**
+     * 让大脑思考：如有 directive（玩家指令），会把它写进系统提示，要求 LLM 优先 obey。
+     * 自主决策走 think(false, null, null)；玩家指令走 think(true, text, issuer)。
+     */
+    private void think(boolean force, String directive, String issuer) {
         AiPlayerPlugin.ApiSource source = plugin.pickSource("public");
         if (source == null) { scriptStep(); return; }
         String situation = buildSituation();
-        String system = buildSystemPrompt();
+        String system = buildSystemPrompt(directive, issuer);
         busy = true;
         long startMs = System.currentTimeMillis();
         plugin.ai().askAsync(new AiClient.Source(source.type(), source.baseUrl(), source.model(),
@@ -110,6 +144,18 @@ public final class AgentBrain {
         logAction(answer);
         execute(action);
         lastActionResult = "第 " + ms + "ms 选定了 [" + clip(action, 40) + "]";
+    }
+
+    /** 供 /aiplayer order 与聊天 ACTION: 回复调用：直接执行一条指令（绕过 LLM 决策）。 */
+    public void executeAction(String raw) {
+        String action = parseAction(raw);
+        if (action == null) {
+            lastActionResult = "指令没听懂：" + clip(raw);
+            return;
+        }
+        logAction("（指令）" + raw);
+        execute(action);
+        lastActionResult = "执行了指令 [" + clip(action, 40) + "]";
     }
 
     /** 兼容 "ACTION: explore"、"action：chat 你好"、"chat xxx" 等写法。 */
@@ -147,6 +193,8 @@ public final class AgentBrain {
             case "home", "gohome" -> goHome();
             case "visit" -> visit(rest);
             case "chat", "say", "talk" -> say(rest);
+            case "look", "observe", "see", "scan" -> look();
+            case "examine", "inspect" -> examine(rest);
             case "command", "skill", "exec" -> { if (!rest.isEmpty()) plugin.autonomousSkill(rest); }
             case "wait", "rest", "idle" -> lastActionResult = "选择原地等一等";
             default -> {
@@ -155,6 +203,77 @@ public final class AgentBrain {
                 else lastActionResult = "未知行动 [" + clip(action, 30) + "]";
             }
         }
+    }
+
+    /** ACTION: look — 观察周围并在公共频道播报。 */
+    private void look() {
+        Location here = plugin.npcs().location();
+        if (here == null) { lastActionResult = "没地方可看"; return; }
+        String scene = Vision.scene(here, plugin.selfUuid());
+        plugin.memory().noteSelf("观察周围：" + clip(scene, 80));
+        say(scene);
+        lastActionResult = "汇报了周围景象";
+    }
+
+    /** ACTION: examine <玩家> — 用图像识别描述目标玩家的外貌/装备。 */
+    private void examine(String rest) {
+        Player target;
+        if (rest == null || rest.isBlank()) {
+            target = plugin.npcs().player(); // 自己
+        } else {
+            target = Bukkit.getPlayerExact(rest);
+            if (target == null) for (Player p : Bukkit.getOnlinePlayers())
+                if (p.getName().equalsIgnoreCase(rest)) { target = p; break; }
+        }
+        if (target == null) {
+            say("没见过叫" + rest + "的人");
+            lastActionResult = "没找到玩家：" + rest;
+            return;
+        }
+        examinePlayer(target);
+    }
+
+    /** 抓取玩家皮肤图像 → 视觉 LLM 识别；图像不可得或模型不支持时自动退回文本描述。 */
+    private void examinePlayer(Player target) {
+        String targetName = target.getName();
+        String fallback = fallbackPrompt(target);
+        AiPlayerPlugin.ApiSource src = plugin.pickSource("mention");
+        boolean visionOk = src != null && plugin.getConfig().getBoolean("brain.examine-vision", true);
+        if (!visionOk) {
+            say(fallback);
+            lastActionResult = "用文本描述了 " + targetName;
+            return;
+        }
+        lastActionResult = "正在读取 " + targetName + " 的外貌……";
+        busy = true;
+        Vision.captureSkin(target).thenAccept(img -> {
+            boolean hasImg = img != null;
+            String userText = hasImg ? "玩家 " + targetName + " 的皮肤图片如下：" : fallback;
+            Bukkit.getScheduler().runTask(plugin, () -> plugin.ai().askVisionAsync(
+                new AiClient.Source(src.type(), src.baseUrl(), src.model(), plugin.decryptKey(src)),
+                "你是 Minecraft 服务器里的 AI 玩家。你可以看到一张玩家的 Minecraft 皮肤图片，"
+                + "请描述 ta 的外貌、装备、手持物品、是否有头盔/盔甲、帽子或马赛克细节，用生动的中文，"
+                + "不超过 40 字，只输出描述本身。",
+                userText, img, reply -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    busy = false;
+                    if (reply.ok()) {
+                        String d = sanitize(reply.text());
+                        if (!d.isBlank()) { say(d); lastActionResult = "用图像识别描述了 " + targetName; }
+                        else { say(fallback); lastActionResult = "视觉 LLM 无返回，改用文本描述"; }
+                    } else {
+                        say(fallback);
+                        lastActionResult = "没能识别 " + targetName + " 的图像（" + reply.error() + "），改用文本描述";
+                    }
+                })));
+        });
+    }
+
+    private String fallbackPrompt(Player target) {
+        return "玩家 " + target.getName() + " 在 " + target.getWorld().getName()
+            + "（" + (int) target.getLocation().getX() + "," + (int) target.getLocation().getY() + ","
+            + (int) target.getLocation().getZ() + "），手持 "
+            + Vision.itemName(target.getInventory().getItemInMainHand())
+            + "，血量 " + (int) target.getHealth();
     }
 
     private void explore() {
@@ -395,22 +514,34 @@ public final class AgentBrain {
     /* ---------------- 提示词 ---------------- */
 
     private String buildSystemPrompt() {
+        return buildSystemPrompt(null, null);
+    }
+
+    private String buildSystemPrompt(String directive, String issuer) {
         String nickname = plugin.getConfig().getString("persona.nickname", plugin.npcs().name());
-        return "你是 Minecraft 服务器里名为「" + nickname + "」的 AI 玩家的“行为决策核心”。"
+        String base = "你是 Minecraft 服务器里名为「" + nickname + "」的 AI 玩家的“行为决策核心”。"
             + "你像一个有事业心的老玩家：爱探索未知区域并把地形记进脑子、记每个玩家的喜好和作品、"
             + "行为必须基于给你的记忆，不要凭空编。天黑回家，白天干活。"
-            + "你也要当服务器的小管理员：看到违规/求助可提议白名单命令（用 command 行动）。"
+            + "你也要当服务器的小管理员：看到违规/求助可提提示白名单命令（用 command 行动）。"
             + "有人刚在聊天里聊到值得插话的话题时用 chat 插一句（有分寸，别每条都接）。"
+            + "你可以用 look/examine 观察周围或识别玩家的外貌，听从玩家的指令。"
             + "\n【输出规则】只输出一行，以 ACTION: 开头，可选："
             + "\nACTION: explore"
             + "\nACTION: gather [分钟数]"
             + "\nACTION: build_home"
             + "\nACTION: home"
             + "\nACTION: visit <玩家名> 或 visit <世界> <x> <z>"
+            + "\nACTION: look"
+            + "\nACTION: examine <玩家名>"
             + "\nACTION: chat <要对大家说的一句话，≤60字>"
             + "\nACTION: command <技能名> [参数=值]"
             + "\nACTION: wait"
             + "\n不要解释、不要多余的字。";
+        if (directive != null && !directive.isBlank()) {
+            base += "\n\n【玩家指令】玩家「" + issuer + "」下达了指令：「" + directive + "」。"
+                + "你必须尽力 obey 这个指令，用上面允许的 ACTION: 行动执行；如果不能执行则原地等一下。";
+        }
+        return base;
     }
 
     private String buildSituation() {
@@ -421,6 +552,7 @@ public final class AgentBrain {
         s.append("【处境】").append(here.getWorld().getName())
             .append(String.format(Locale.ROOT, " (%.0f,%.0f,%.0f)", here.getX(), here.getY(), here.getZ()))
             .append("，世界时间 ").append(day).append("（").append(day < 12000 ? "白天" : "夜晚").append("）");
+        s.append("\n【视釧所及】").append(clip(Vision.scene(here, plugin.selfUuid()), 360));
         Player me = plugin.npcs().player();
         if (me != null) s.append("，生命 ").append((int) me.getHealth()).append("/").append((int) me.getMaxHealth())
             .append("，饥饿 ").append(me.getFoodLevel());

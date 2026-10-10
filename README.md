@@ -12,14 +12,18 @@
 
 ## 仓库结构
 
-仓库里有两个相互独立的产物，各自有独立构建：
+这是一个 **Paper-only** 的仓库：唯一产物就是 `AiPlayerPaper` 插件。
 
-| 路径 | 产物 | 构建方式 |
-| --- | --- | --- |
-| `paper-plugin/` | **AiPlayerPaper** —— Paper/Spigot 插件（主项目） | `cd paper-plugin && gradle build` |
-| `src/` | 早期生成的 Fabric mod 骨架（`paper_ai_paper_ai_paper`） | `./gradlew build` |
+| 路径 | 说明 |
+| --- | --- |
+| `paper-plugin/` | 插件主体：源码、配置、说明书、构建脚本 |
+| `paper-plugin/src/main/java/cn/blockforge/aiplayer/` | Java 源码 |
+| `paper-plugin/src/main/resources/` | `plugin.yml` / `config.yml` / `manual.md` / `blueprints/` |
+| `.github/workflows/ci.yml` | CI：固定 Gradle + JDK，校验 UTF-8，构建 |
+| 其它 | `LICENSE` / `CONTRIBUTING.md` / `CODE_OF_CONDUCT.md` / `SECURITY.md` 等开源脚手架 |
 
-两者不共享构建，也不互相依赖。日常开发只需要动 `paper-plugin/`。
+构建产物直接产在 `paper-plugin/build/libs/AiPlayerPaper-<版本>.jar`，版本号取自
+`paper-plugin/src/main/resources/plugin.yml` 的 `version` 字段。
 
 ---
 

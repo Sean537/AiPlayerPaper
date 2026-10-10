@@ -6,11 +6,15 @@ group = 'cn.blockforge.aiplayer'
 
 // 版本号只有一个来源：resources/plugin.yml。jar 名、插件列表、控制台输出一律跟着它走，
 // 不会再出现"plugin.yml 写 1.3.0、打出来的 jar 却叫 1.0.0"这种对不上的情况。
-version = file('src/main/resources/plugin.yml').withReader('UTF-8') { String yml ->
-    def m = yml =~ /^version:\s*['"]?([^'"\s]+)['"]?\s*$/
+// 用 getText('UTF-8') 而不是 withReader：withReader 传给闭包的是 BufferedReader，
+// 若闭包参数写成 String，会在 Gradle 9 上 MissingMethodException（实践踩过）。
+version = {
+    def yml = file('src/main/resources/plugin.yml').getText('UTF-8')
+    // (?m) 让 ^/$ 匹配每行开头/结尾——version 在文件第 2 行，不是整篇的开头
+    def m = (yml =~ /(?m)^\s*version:\s*['"]?([^'"\s]+)['"]?\s*$/)
     if (!m.find()) throw new GradleException('src/main/resources/plugin.yml 里找不到 version: 字段')
     m.group(1)
-}
+}()
 
 java {
     withSourcesJar()
@@ -86,8 +90,9 @@ tasks.register('verifyManualInSync') {
         if (!repoCopy.exists()) {
             throw new GradleException("缺少 ${repoCopy}（与 jar 内的 manual.md 应保持一致）")
         }
-        // 逐字节比：说明书里有大量中文，"看起来一样"在这里不成立
-        if (!repoCopy.bytes.equals(packaged.bytes)) {
+         // 逐字节比：说明书里有大量中文，"看起来一样"在这里不成立。
+         // 注意：byte[].equals 比的是引用而非内容，必须用 Arrays.equals。
+         if (!java.util.Arrays.equals(repoCopy.bytes, packaged.bytes)) {
             throw new GradleException(
                 "两份使用说明书不一致：\n" +
                 "  ${repoCopy}\n  ${packaged}\n" +
@@ -95,7 +100,7 @@ tasks.register('verifyManualInSync') {
         }
         def out = layout.buildDirectory.file('manual-sync-check.txt').get().asFile
         out.parentFile.mkdirs()
-        out.text = "两份使用说明书一致（${packaged.bytes.length()} 字节）\n"
+        out.text = "两份使用说明书一致（${packaged.bytes.length} 字节）\n"
     }
 }
 

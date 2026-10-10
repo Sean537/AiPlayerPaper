@@ -32,7 +32,7 @@ cd paper-plugin && gradle wrapper --gradle-version 8.10
 - `paper-plugin/src/main/java/cn/blockforge/aiplayer/` — 插件主体
 - `paper-plugin/src/main/resources/config.yml` — 配置模板（**每一项都要有中文注释**）
 - `paper-plugin/src/main/resources/manual.md` — 使用说明书，构建时原样拷进 jar
-- `src/` — 早期生成的 Fabric mod 骨架，与 Paper 插件互不依赖
+-
 
 ## 提交约定
 

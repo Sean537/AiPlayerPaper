@@ -25,11 +25,10 @@ SOFTWARE.
 Third-party notice
 
 This repository builds against, but does not redistribute, Minecraft and
-server-loader components (Fabric Loom, Fabric API, Paper API). Those components
-are the property of their respective owners and remain under their own licenses:
+the Paper server API. Those components are the property of their respective
+owners and remain under their own licenses:
 
   - Minecraft           — Mojang Studios / Microsoft
   - Paper / Spigot API  — PaperMC / SpigotMC contributors
-  - Fabric Loom & API   — FabricMC contributors
 
 Generated for the project owner by AutoMods AI.

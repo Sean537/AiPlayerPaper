@@ -74,25 +74,3 @@ jobs:
           name: AiPlayerPaper
           path: paper-plugin/build/libs/*.jar
           if-no-files-found: error
-
-  fabric-mod:
-    name: Fabric mod 骨架
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: 安装 Gradle
-        run: |
-          curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt
-          echo "/opt/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
-
-      # 根 gradle.properties 曾写死 /opt/jdks/java-8 这类 Linux 专属路径，
-      # 在 CI 和其他平台上会直接报错。已移除，这里用 setup-java 提供的 JDK。
-      - name: 构建
-        run: gradle build --stacktrace
