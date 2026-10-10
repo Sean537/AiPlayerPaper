@@ -69,7 +69,7 @@ jobs:
 
       - name: 上传产物
         if: matrix.java == '21'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AiPlayerPaper
           path: paper-plugin/build/libs/*.jar
